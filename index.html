@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Grande Configurator</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="./assets/icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./assets/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1a1a19">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Grande">
+<style>
+  :root {
+    --ink:#1a1a19; --muted:#5f5e5b; --faint:#8d8b87;
+    --glass:rgba(255,255,255,.52); --sheen:rgba(255,255,255,.55); --edge:rgba(0,0,0,.08);
+    --hair:rgba(0,0,0,.08);
+    --acc:#1a1a19; --acc-soft:rgba(26,26,25,.16); --on-acc:#fff;
+    --r-pill:999px; --r-panel:26px;
+    --blur:blur(22px) saturate(1.5);
+    --bd-orb-a:rgba(196,186,172,.42); --bd-orb-b:rgba(176,182,190,.34);
+    --font:-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body {
+    font-family:var(--font); color:var(--ink); overflow:hidden;
+    -webkit-font-smoothing:antialiased; background:#efedea;
+  }
+
+  /* ---------- cam arka plan (CSS'te, WebGL'de değil) ---------- */
+  #backdrop { position:fixed; inset:0; z-index:0; }
+  #backdrop .base { position:absolute; inset:0;
+    background:linear-gradient(168deg,#f8f7f5 0%,#efedea 52%,#e7e4e0 100%); }
+  #backdrop .orb { position:absolute; border-radius:50%; filter:blur(58px);
+    transition:background 600ms ease; }
+  #backdrop .orb.a { width:50%; aspect-ratio:1; left:-12%; top:-18%; background:var(--bd-orb-a); }
+  #backdrop .orb.b { width:56%; aspect-ratio:1; right:-16%; bottom:-26%; background:var(--bd-orb-b); }
+  #backdrop .pool { position:absolute; inset:0;
+    background:radial-gradient(46% 50% at 50% 42%, rgba(255,255,255,.95), rgba(255,255,255,0) 68%); }
+  #backdrop .grain { position:absolute; inset:0; opacity:.35; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.30'/%3E%3C/svg%3E"); }
+
+  /* ---------- canvas ---------- */
+  #canvasWrap { position:fixed; inset:0; z-index:1; }
+  #canvasWrap canvas { display:block; width:100%; height:100%; touch-action:none; }
+
+  /* ---------- nokta katmanı ---------- */
+  #hotspotLayer { position:fixed; inset:0; z-index:2; pointer-events:none; }
+
+  /* ---------- noktalar ---------- */
+  .hotspot {
+    position:absolute; left:0; top:0; width:44px; height:44px;   /* dokunma hedefi */
+    margin:-22px 0 0 -22px; display:grid; place-items:center;
+    background:none; border:none; padding:0; cursor:pointer; pointer-events:auto;
+    transition:opacity .18s ease;
+  }
+  .hotspot .bead {
+    width:14px; height:14px; border-radius:50%;
+    background:rgba(255,255,255,.75);                 /* noktalarda blur YOK */
+    border:1.5px solid var(--acc);
+    box-shadow:0 1px 6px rgba(0,0,0,.22);
+    transition:width .14s ease, height .14s ease, background .14s ease, box-shadow .14s ease;
+  }
+  .hotspot[aria-pressed="true"] .bead {
+    background:var(--acc); box-shadow:0 0 0 5px var(--acc-soft), 0 1px 6px rgba(0,0,0,.22);
+  }
+  .hotspot:hover .bead { width:18px; height:18px; }
+  .hotspot .tip {
+    position:absolute; bottom:30px; white-space:nowrap; opacity:0; pointer-events:none;
+    font-size:8.5px; font-weight:700; color:#fff; background:rgba(26,26,25,.88);
+    padding:4px 8px; border-radius:var(--r-pill); transition:opacity .14s ease;
+  }
+  .hotspot:hover .tip { opacity:1; }
+  .hotspot[hidden] { display:none; }
+  #hotspotLayer[data-dragging="true"] .hotspot { opacity:.3; pointer-events:none; }
+
+  /* ---------- ortak cam ---------- */
+  .glass {
+    background:var(--glass);
+    -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+    border:1px solid var(--edge);
+    box-shadow:inset 0 1px 0 var(--sheen), 0 8px 26px rgba(40,36,30,.11);
+    border-radius:var(--r-pill);
+  }
+  .glass.panel { border-radius:var(--r-panel); }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass { background:rgba(255,255,255,.92); }
+  }
+
+  /* ---------- genel yardımcı sınıflar (dock, özet ve katalog ortak kullanır) ---------- */
+  .hair { height:1px; background:var(--hair); }
+  .lbl {
+    font-size:8.5px; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--faint); font-weight:700;
+  }
+
+  /* ---------- yüzen öğelerin konumları ---------- */
+  .float { position:fixed; z-index:3; display:flex; align-items:center; gap:8px; padding:8px 16px; }
+  /* #topRightWrap: #langSwitch VE #priceBar'ı (CTA) AYNI üst-sağ köşede TEK
+     sabit konumlandırıcı altında tutar -- kendisi cam DEĞİL, #dockWrap ile
+     birebir aynı desende salt bir flex kabı. Dil pili CTA'nın SOLUNDA oturur
+     (DOM sırası: #langSwitch önce, #priceBar sonra). CTA metni dile göre
+     genişlik değiştirdiğinden (TR "Ürün Özeti" ~10 karakter vs EN "Product
+     Summary" ~15 karakter) pilin konumunu piksel-sabit bir `right` değeriyle
+     hesaplamak yerine flexbox'a bırakıyoruz: genişlik ne olursa olsun
+     aralarında sabit 8px boşluk kalır, çakışma imkânsız. #langSwitch/
+     #priceBar'a gelen .float'ın position:fixed'i BURADA static'e çevriliyor
+     -- konumlandırmayı artık YALNIZCA #topRightWrap üstleniyor (bkz. altta
+     #dockWrap/#dock için aynı desenin açıklaması). */
+  #topRightWrap {
+    position:fixed; z-index:3; top:15px; right:15px;
+    display:flex; align-items:center; gap:8px;
+  }
+  #langSwitch, #priceBar { position:static; }
+  #priceBar   { padding:8px 16px; gap:8px; }
+  /* #dockWrap: dock (çip satırı) ve dockOptions (seçenek satırları) için TEK
+     sabit konumlandırıcı -- kendisi cam DEĞİL, salt bir flex kabı.
+     column-reverse ile DOM'daki İLK çocuk (#dock) her zaman ALTTA sabit
+     kalır, İKİNCİ çocuk (#dockOptions) onun ÜSTÜNDE büyür/küçülür: #dock'un
+     yüksekliği artık seçenek satırı sayısından hiç etkilenmediği için parça
+     çipi satırı bir daha zıplamaz (Görev 1 -- bkz. dock-sabit-zoom-report.md).
+     #dockCta üçüncü (ve DOM'da SON) çocuk: masaüstünde display:none (aşağıda,
+     .dockCta kuralı), mobilde tek-parça sheet'in en altında görünür.
+     #dock/#dockOptions'a gelen .float'ın position:fixed'i BURADA static'e
+     çevriliyor -- konumlandırmayı artık YALNIZCA #dockWrap üstleniyor. */
+  #dockWrap {
+    position:fixed; z-index:3; bottom:18px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column-reverse; align-items:center; gap:12px;
+  }
+  #dock, #dockOptions {
+    position:static; flex-direction:column; align-items:stretch; gap:12px; padding:16px 20px;
+  }
+  #dockOptions { gap:8px; }   /* satırlar arası 8px -- gap:0 iken 21px'lik yuvarlak RENK numuneleri
+                                  üstteki DOKU çip satırıyla görsel olarak çakışıyordu (kullanıcı raporu) */
+  /* Mobil-yalnız parçalar: varsayılan display:none BURADA, @media bloğundan
+     ÖNCE tanımlanmalı. Medya sorguları özgüllük eklemez -- aynı özgüllükte
+     sonraki kural kazanır; sıralama ters olsaydı bu kural her genişlikte
+     kazanır ve öğe asla görünmezdi (bu projede daha önce yaşanmış bir hata). */
+  .dockHandle { display:none; width:36px; height:4px; border-radius:2px; align-self:center;
+                background:rgba(0,0,0,.18); margin-bottom:4px; cursor:grab; touch-action:none; }
+  .dockCta    { display:none; width:100%; text-align:center; }
+  #catalogTrigger {
+    position:fixed; z-index:4; left:15px; top:15px; display:flex; align-items:center; gap:8px;
+    font-size:12px; font-weight:600; letter-spacing:.04em; color:var(--ink);
+    padding:8px 16px; cursor:pointer; font-family:inherit;
+    appearance:none; -webkit-appearance:none;
+  }
+  #catalogTrigger:hover { background:rgba(255,255,255,.62); }
+  #catalogTrigger .caret { font-size:9px; color:var(--muted); }
+  /* Grande markası, "Ürünler" metninin SOLUNDA -- kaynak wordmark-mark.png
+     128px yükseklikte üretildi (bkz. generate-wordmark-mark.ps1), burada
+     22px'e küçültülüyor: metin yüksekliğine (font-size:12px) yakın ama biraz
+     daha uzun, >5x downscale sayesinde yüksek-DPI ekranlarda (3x'e kadar)
+     pikselleşme olmadan keskin kalıyor. width:auto ile doğal en-boy oranı
+     korunuyor -- generate-icons.ps1'in PWA seti gibi yapay kare dolgu YOK
+     (o dolgu 20-24px'te logoyu küçük/kayıp gösteriyordu, bkz. rapor).
+     #catalogTrigger zaten display:flex + align-items:center (yukarıda) --
+     görsel metinle dikey ortalanır, ayrıca bir konumlandırma gerekmez.
+     pointer-events'e hiç dokunulmuyor: img buton İÇİNDE sıradan akış öğesi,
+     tıklamayı doğal olarak devralır (buton üstündeki her tıklama -- görsel
+     dahil -- #catalogTrigger'ın click handler'ını tetikler). */
+  #catalogTrigger .logo { height:22px; width:auto; flex:0 0 auto; display:block; }
+  #catalogPanel { position:fixed; z-index:5; left:18px; top:48px; display:none; }
+  #catalogPanel[data-open="true"] { display:grid; }
+  /* top:71px = #priceBar top(15px) + its own height(48px) + 8px gap -- was
+     52px (a leftover from the spacing-scale normalization commit that never
+     re-measured it against the CTA's actual height), which overlapped
+     #priceBar's bottom edge by 11px (measured live: priceBar bottom=63,
+     summaryCard top=52). */
+  #summaryCard { position:fixed; z-index:5; top:71px; right:15px; width:252px; display:none;
+                 flex-direction:column; padding:16px; }
+  #summaryCard[data-open="true"] { display:flex; }
+  #utilityButtons { position:fixed; z-index:3; bottom:18px; right:15px; display:flex; gap:8px; }
+  /* #langSwitch: üst-sağ köşe, #priceBar'ın (CTA) SOLUNDA -- #topRightWrap
+     içindeki iki flex kardeşten biri (bkz. #topRightWrap yorumu yukarıda).
+     Konumu artık #topRightWrap'ten miras; burada yalnızca kendi iç
+     boşluğu/aralığı kalıyor. İki-durumlu kontrol için codebase'te zaten
+     kurulu olan .chip[aria-pressed] görsel dilini kullanır -- ayrı bir
+     switch/segmented-control bileşeni icat etmek yerine dock.js'in parça/
+     malzeme çiplerinde kullanılan AYNI aktif/pasif örüntü. */
+  #langSwitch { padding:4px; gap:2px; }
+  #langSwitch .chip { padding:4px 10px; }
+
+  #toast {
+    position:fixed; z-index:9; bottom:76px; left:50%; transform:translateX(-50%) translateY(8px);
+    background:rgba(26,26,25,.90); color:#fff; font-size:11.5px; font-weight:600;
+    padding:8px 16px; border-radius:var(--r-pill); opacity:0; pointer-events:none;
+    transition:opacity .18s ease, transform .18s ease;
+  }
+  #toast[data-show="true"] { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #loading {
+    position:fixed; inset:0; z-index:6; display:grid; place-items:center;
+    font-size:13px; color:var(--muted); background:rgba(244,243,241,.75);
+  }
+  #loading[hidden] { display:none; }
+
+  /* ---------- dock ---------- */
+  /* .row artık HEM #dock (çip satırı) HEM #dockOptions (seçenek satırları)
+     içinde kullanılıyor (Görev 1, iki-panel bölünmesi) -- bu yüzden #dock
+     ön eki kaldırıldı. .row zaten yalnızca dock bağlamında kullanılan bir
+     sınıf (katalog .cat/.prod, özet .srow/.prow farklı adlar kullanıyor). */
+  .row { display:flex; align-items:center; gap:4px; }
+  /* .row.opts (DOKU/RENK/Finiş/İplik satırları) #dockOptions İÇİNDE
+     align-items:stretch (yukarıda, "#dock, #dockOptions" kuralı) ile
+     #dockOptions'ın kendi genişliğine ESNETİLİR -- o genişlik #dockOptions'ın
+     EN GENİŞ satırından (bugün RENK, 8 numune) belirlenir. justify-content
+     olmadan varsayılan flex-start'ta, ondan DAHA DAR bir satır (DOKU, 4 çip)
+     esnetilmiş kutusunun İÇİNDE sola yapışık kalır -- kutu ortada olsa da
+     içerik değil. justify-content:center bunu düzeltir: içerik (etiket+çip
+     grubu TEK birim olarak) kutu içinde ortalanır, tıpkı #dock'un tek satırlı
+     çip satırının #dockWrap'in align-items:center'ıyla ortalanması gibi.
+     Satır taşarsa (gelecekte daha fazla deri tipi/rengi eklenince, veya
+     mobil/touch'ta overflow-x:auto ile kaydırmalı hale gelince) düz
+     `justify-content:center` GÜVENLİ (safe) DEĞİLDİR -- tarayıcılar bunu
+     overflow'da flex-start'a düşürmez, taşma HER İKİ yöne eşit dağılır ve
+     sol taraftaki taşma negatif bir ofsette kalır: scrollLeft 0'da clamp'
+     lendiği için o kısım scroll ile ASLA erişilemez (canlı ölçüldü: 14 ekstra
+     çip enjekte edilince ilk öğe 379px kırpıldı, scrollLeft:0 VE scrollLeft:
+     -9999 ikisi de aynı kırpılmayı gösterdi -- bkz.
+     final-review-batch2.md I2). Asıl güvenli davranış için doğru anahtar
+     kelime `safe center`; ikinci bildirim `safe` desteklemeyen motorlarca
+     geçersiz sayılıp atlanır (bugünkü düz `center` davranışı orada korunur).
+     `safe center` ile aynı canlı testte: maxScrollLeft 757, kırpma YOK. */
+  .row.opts { gap:12px; justify-content:center; justify-content:safe center; }
+  /* width değil min-width: 34px yalnızca TR sözcükler ("Doku"/"Renk") için
+     ölçülmüştü -- EN'de "Texture"/"Color" daha uzun olduğunca sabit width
+     sütun hizasını bozuyordu (ölçülen ~72px kayma, bkz.
+     final-review-batch2.md Minor). min-width + flex:0 0 auto ile her satırın
+     etiketi en uzun çeviriye göre serbestçe genişleyebilir, kısa olanlar
+     (TR) da AYNI ortak genişliğe tamamlanır -- sütun hizası her iki dilde de
+     korunur. */
+  .row .lbl { min-width:58px; flex:0 0 auto; }   /* .lbl ve .hair Task 1'de genel tanımlı */
+  .chip {
+    font-size:10.5px; font-weight:600; padding:4px 12px; border-radius:var(--r-pill);
+    background:rgba(255,255,255,.42); border:1px solid rgba(0,0,0,.09);
+    color:var(--ink); white-space:nowrap; cursor:pointer; font-family:inherit;
+    transition:background .12s, border-color .12s, color .12s;
+  }
+  .chip:hover { border-color:rgba(0,0,0,.28); }
+  .chip[aria-pressed="true"] { background:var(--acc); border-color:var(--acc); color:var(--on-acc); }
+  .chip .cdot {
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    margin-right:4px; vertical-align:-1px; border:1px solid rgba(0,0,0,.2);
+  }
+  .chip.more { border-style:dashed; background:transparent; color:var(--muted); }
+  .sw {
+    width:21px; height:21px; border-radius:50%; padding:0; cursor:pointer;
+    border:1px solid rgba(0,0,0,.18);
+    box-shadow:inset 0 -3px 6px rgba(0,0,0,.25);
+  }
+  .sw[aria-pressed="true"] { outline:2px solid var(--acc); outline-offset:2px; }
+
+  /* ---------- katalog ---------- */
+  #catalogPanel { grid-template-columns:118px 1fr; padding:0; overflow:hidden; width:410px; }
+  #catalogPanel .cats { padding:16px 12px 16px 16px; border-right:1px solid var(--hair);
+                        display:flex; flex-direction:column; gap:4px; }
+  #catalogPanel .cat { font-size:11px; font-weight:600; color:var(--muted); padding:4px;
+                       white-space:nowrap; background:none; border:none; text-align:left;
+                       cursor:pointer; font-family:inherit; }
+  #catalogPanel .cat[aria-pressed="true"] { color:var(--ink); }
+  #catalogPanel .cat[aria-pressed="true"]::before { content:"— "; }
+  #catalogPanel .cat[disabled] { color:#b6b4b0; cursor:default; }
+  #catalogPanel .prods { padding:16px; display:flex; flex-direction:column; gap:8px; }
+  #catalogPanel .prod { display:flex; align-items:center; gap:8px; padding:8px;
+                        border-radius:14px; border:1px solid transparent; background:none;
+                        cursor:pointer; text-align:left; width:100%; font-family:inherit;
+                        position:relative; overflow:hidden; }
+  #catalogPanel .prod:hover:not([disabled]) { background:rgba(255,255,255,.45); }
+  #catalogPanel .prod[aria-pressed="true"] { background:rgba(255,255,255,.55);
+                                             border-color:rgba(0,0,0,.10); }
+  #catalogPanel .prod[disabled] { opacity:.5; cursor:default; }
+  #catalogPanel .prod .th { width:34px; height:26px; border-radius:8px; flex:0 0 auto;
+                            background:linear-gradient(160deg,#8d6242,#6b4830); }
+  #catalogPanel .prod[disabled] .th { background:rgba(0,0,0,.06); }
+  #catalogPanel .prod .nm { font-size:11px; font-weight:600; display:block; }
+  #catalogPanel .prod .sub { font-size:9px; color:var(--muted); display:block; }
+  #catalogPanel .prod .tag { margin-left:auto; font-size:8.5px; font-weight:700;
+                             letter-spacing:.08em; text-transform:uppercase; color:var(--faint); }
+  #catalogPanel .prod .bar { position:absolute; left:0; bottom:0; height:2px;
+                             background:var(--acc); width:0; transition:width .15s linear; }
+
+  /* ---------- fiyat şeridi + özet kartı ---------- */
+  .cta { background:var(--acc); color:var(--on-acc); border:none; font-size:10.5px;
+         font-weight:700; padding:8px 16px; border-radius:var(--r-pill); cursor:pointer;
+         font-family:inherit; }
+
+  #summaryCard .lbl { margin-bottom:8px; }   /* .lbl'in kendisi Task 1'de genel tanımlı */
+  #summaryCard .srow { display:flex; align-items:center; gap:8px; padding:4px 0; }
+  #summaryCard .srow .dot { width:14px; height:14px; border-radius:50%; flex:0 0 auto;
+                            border:1px solid rgba(0,0,0,.18);
+                            box-shadow:inset 0 -2px 4px rgba(0,0,0,.25); }
+  #summaryCard .srow .nm { font-size:10.5px; font-weight:600; flex:1; }
+  #summaryCard .srow .vl { font-size:9.5px; color:var(--muted); }
+  #summaryCard .acts { display:flex; gap:4px; margin-top:12px; }
+  #summaryCard .acts .chip { flex:1; text-align:center; }
+
+  /* ==========================================================
+     860px altı: dock/katalog/özet tam genişlik sheet'e döner,
+     üst satır Ürünler + ürün adını yan yana taşır. Bu blok her
+     zaman .dockHandle/.dockCta'nın ve #dockWrap/#dock/#dockOptions'ın
+     yukarıdaki masaüstü (varsayılan) kurallarından SONRA gelmeli (bkz.
+     yukarıdaki not) -- burada da öyle. #dock/#dockOptions ID seçiciler
+     olduğu için .glass/.panel sınıflarına karşı özgüllük SORUNU yok
+     (ID > sınıf, sıradan bağımsız); asıl kırılgan nokta BU bloğun kendi
+     masaüstü karşılığından SONRA gelmesi -- id seçici id seçiciyle
+     eşitliğinde sıradaki kazanır.
+     ========================================================== */
+  @media (max-width: 860px) {
+    :root { --blur: blur(12px) saturate(1.4); }  /* backdrop-filter mobil GPU'da pahalı */
+
+    /* ---- Ürünler tetikleyicisi: safe-area'ya göre konumlan ----
+       Eskiden #topBar adlı bir sarmalayıcı div bu konumlandırmayı üstleniyordu
+       (o zamanlar #productTag'i de yan yana tutuyordu). #productTag kaldırılınca
+       #topBar geride görünmez ama position:fixed + left/right inset'li,
+       tüm genişliğe yayılan bir kutu olarak kaldı -- pointer-events'i hiç
+       kapatılmadığı için telefonlarda bu bandın altındaki canvas'a dokunuşlar
+       hiç ulaşmıyordu (orbit başlatılamıyordu). #topBar tamamen kaldırıldı;
+       #catalogTrigger artık kendi position:fixed'ini (varsayılan kuralda
+       tanımlı) korur, burada yalnızca safe-area ofsetleri ekleniyor. */
+    #catalogTrigger {
+      top: calc(15px + env(safe-area-inset-top));
+      left: calc(15px + env(safe-area-inset-left));
+    }
+
+    /* ---- fiyat şeridi: CTA artık dock sheet'in içinde, burada gösterecek bir şey kalmadı ---- */
+    #priceBar { display:none; }
+
+    /* ---- dock: tam genişlik, alta yapışık TEK sheet ----
+       Masaüstünde #dock (çipler) ve #dockOptions (seçenekler) iki AYRI cam
+       panel olarak 12px boşlukla üst üste yığılıyor (bkz. yukarıdaki
+       varsayılan kural). Burada, 860px altında, TEK parça sheet görünümüne
+       dönüyoruz: cam/kenarlık/gölge/köşe yuvarlama artık #dockWrap'te
+       toplanıyor; #dock ve #dockOptions kendi camlarını kaybedip yalnızca
+       iç düzen (flex-direction/gap/padding, yukarıdaki varsayılan kuraldan
+       miras) sağlayan şeffaf kaplara dönüşüyor. Böylece aradaki 12px boşluk
+       ve çift kenarlık kaybolur, eski tek-kutu #dockRows görünümüyle
+       BİREBİR aynı sonuç elde edilir. #dockWrap'in flex-direction'ı da
+       column'a (reverse DEĞİL) dönüyor: DOM sırası zaten istenen görsel
+       sırayla eşleşiyor -- tutamaç+çipler (#dock) üstte, ayraç+seçenekler
+       (#dockOptions) ortada, CTA en altta (eski #dockRows akışıyla birebir). */
+    #dockWrap {
+      left:0; right:0; bottom:0; top:auto; transform:none; width:100%;
+      flex-direction:column; align-items:stretch; gap:0;
+      background:var(--glass); -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+      border:1px solid var(--edge);
+      box-shadow:inset 0 1px 0 var(--sheen), 0 8px 26px rgba(40,36,30,.11);
+      border-radius: var(--r-panel) var(--r-panel) 0 0;
+      padding-top: 8px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+      padding-left: calc(16px + env(safe-area-inset-left));
+      padding-right: calc(16px + env(safe-area-inset-right));
+    }
+    #dock, #dockOptions {
+      background:none; border:none; box-shadow:none; border-radius:0; padding:0;
+    }
+    .dockHandle { display:block; }
+    .dockCta    { display:block; margin-top:12px; }  /* eski #dock gap:12px'in dockRows<->dockCta boşluğunun karşılığı */
+
+    /* dockCollapsed: dock-sheet.js tutamacı sürükleyince/dokununca #dock'a
+       yazar. #dockOptions ve #dockCta artık #dock'un DOM KARDEŞİ (ikisi de
+       #dockWrap'in diğer çocukları), bu yüzden genel kardeş seçici (~)
+       kullanılıyor -- seçenekler + CTA tek seferde gizleniyor. Çip satırının
+       kendisi (.row.parts, #dock'un İÇİNDE) de aynı kuralla gizleniyor ki
+       "aşağı sürükle -> model tam ekran" beklentisi karşılansın (kullanıcı
+       isteği) -- yalnızca .dockHandle görünür kalıyor, #dockWrap'in kendi
+       yüksekliği içerik gizlenince otomatik küçülüyor (sabit height yok),
+       geriye ince bir tutamaç şeridi kalıyor. */
+    #dock[data-collapsed="true"] .row.parts,
+    #dock[data-collapsed="true"] ~ #dockOptions,
+    #dock[data-collapsed="true"] ~ .dockCta { display:none; }
+
+    /* ---- çip ve renk satırları: yatay kaydırma + sağda solma maskesi ---- */
+    #dock .row.parts, #dockOptions .row.opts {
+      overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+              mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    }
+    #dock .row.parts::-webkit-scrollbar, #dockOptions .row.opts::-webkit-scrollbar { display:none; }
+
+    /* ---- katalog + özet: alta yapışık sheet, dahili kaydırma ---- */
+    #catalogPanel, #summaryCard {
+      left:0; right:0; top:auto; bottom:0; width:100%;
+      border-radius: var(--r-panel) var(--r-panel) 0 0;
+      max-height:70vh; overflow-y:auto;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+      padding-left: calc(16px + env(safe-area-inset-left));
+      padding-right: calc(16px + env(safe-area-inset-right));
+    }
+    #catalogPanel { grid-template-columns: 96px 1fr; }   /* kategori sütunu daralt */
+
+    /* ---- yardımcı düğmeler: sağ kenarda dikey, dock sheet'inin üstünde ---- */
+    #utilityButtons {
+      bottom:auto; top:64px; flex-direction:column;
+      right: calc(12px + env(safe-area-inset-right));
+    }
+
+    /* ---- dil anahtarı + CTA köşesi: masaüstündeki #topRightWrap (bkz.
+       yukarıdaki varsayılan kural) burada da üst-sağ köşede kalır --
+       #catalogTrigger'ın aldığı gibi yalnızca safe-area ofsetleri ekleniyor.
+       #priceBar bu genişlikte display:none olduğundan (yukarıda), köşede
+       fiilen sadece #langSwitch görünür kalır; #topRightWrap gizli CTA
+       çocuğunun etrafında otomatik küçülür (flex kabı, boş çocuğu flow'dan
+       çıkarır), elle yeniden konumlandırma gerekmez. */
+    #topRightWrap {
+      top: calc(15px + env(safe-area-inset-top));
+      right: calc(15px + env(safe-area-inset-right));
+    }
+  }
+
+  /* ---- ~380px altı: katalog kategori sütunu iki sütunlu düzende bile dar
+     kalıyor -- kategoriler ürün listesinin ÜSTÜNE yatay kaydırmalı bir
+     şerit olarak taşınıyor, tek sütun. (Karar: 381-860px'te 96px'lik dar
+     sütun yeterince okunaklı kalıyor; 380px ve altında ürün satırındaki
+     ikon+isim+fiyat için yer kalmıyor, o yüzden burada değiştirdik.) ---- */
+  @media (max-width: 380px) {
+    #catalogPanel { grid-template-columns: 1fr; }
+    #catalogPanel .cats {
+      flex-direction:row; align-items:center; gap:8px; overflow-x:auto;
+      -webkit-overflow-scrolling:touch; scrollbar-width:none;
+      border-right:none; border-bottom:1px solid var(--hair);
+      padding:12px 16px;
+    }
+    #catalogPanel .cats::-webkit-scrollbar { display:none; }
+    #catalogPanel .cats .lbl { flex:0 0 auto; }
+  }
+
+  /* ==========================================================
+     Dokunmatik cihazlar (gerçek fare/trackpad'i OLMAYAN telefon +
+     tablet): (hover:none) and (pointer:coarse) GENİŞLİKTEN BAĞIMSIZ
+     çalışır -- bu yüzden hem 860px altındaki telefonları HEM DE 860px'i
+     AŞAN dokunmatik tabletleri (masaüstü yüzen dock'u koruyan ama fare
+     hassasiyetiyle boyutlanmış çip/switch'leri olan -- bkz.
+     cihaz-analizi.md) TEK bir yerden düzeltir. Gerçek fare/trackpad
+     kullanan masaüstü (hover:hover, pointer:fine) bu bloktan HİÇ
+     etkilenmez -- >=1280px masaüstü davranışı değişmez (regresyon
+     testinde doğrulandı, bkz. cihaz-optimizasyon-report.md).
+     Apple HIG 44x44pt + Android Material 48x48dp alt sınırlarını
+     karşılamak için: birincil dokunma hedefi olan öğeler (dockCta,
+     katalog ürün satırı) 48px'e, geri kalanı en az 44px'e çıkarılıyor.
+     ========================================================== */
+  @media (hover: none) and (pointer: coarse) {
+    .chip {
+      min-height:44px; padding:10px 16px;
+      display:inline-flex; align-items:center;
+    }
+    /* #langSwitch .chip'in kendi (1,1,0) özgüllüğü (yukarıda, varsayılan
+       blokta) bu bloktaki düz `.chip`'in (0,1,0) özgüllüğünü HER ZAMAN yener
+       -- medya sorguları özgüllük eklemez, bu yüzden `padding` burada
+       kaybediyordu (min-height rekabetsiz olduğu için geçiyordu, sonuç
+       34×44/36×44 gibi çarpık bir dokunma hedefiydi -- bu dosyada üçüncü kez
+       yaşanan aynı özgüllük tuzağı, final-review-batch2.md I3). Eşit/üstün
+       özgüllükle açıkça hedefleyip ezmek gerekiyor. */
+    #langSwitch .chip { min-width:44px; padding:10px 12px; justify-content:center; }
+    /* 32px + flex-shrink:0: RENK satırı overflow-x:auto ile dar bir kapta
+       kaydırmalı olduğu için, shrink değeri varsayılan (1) kalırsa tarayıcı
+       genişliği sıkıştırıyor ama height'a dokunmuyor -- sonuç dikeyde uzamış
+       oval (kullanıcı ekran görüntüsüyle bildirdi). shrink:0 bunu engelliyor;
+       44'ten 32'ye küçültme kullanıcının açık isteği, dokunma hedefi bilerek
+       gevşetiliyor -- bu SADECE bu dokunmatik blokta, masaüstü #sw:21px'e
+       (yukarıda, temel kural) hiç dokunmuyor. */
+    .sw { width:32px; height:32px; flex-shrink:0; }
+    /* #dockCta'nın markup'ı class="cta dockCta" (İKİ sınıf birden) -- bu yüzden
+       display'i düz ".cta" seçicisine yazmak YETMEZ, dockCta düğmesi de ".cta"
+       sınıfı üzerinden aynı display:flex'i alır (aynı I1 hatasının başka bir
+       biçimi). Seçici burada "#priceBar .cta" ile priceBar'ın KENDİ düğmesine
+       daraltılıyor; .dockCta'nın görünürlüğü tamamen masaüstündeki
+       "display:none" (yukarıda) / 860px altındaki "display:block" (mobil sheet
+       bloğu) kurallarına bırakılıyor, GENİŞLİKTEN BAĞIMSIZ bu dokunma bloğu
+       artık display'e hiç dokunmuyor. Eski birleşik ".cta, .dockCta { display:flex }"
+       kuralı, 860px'i aşan dokunmatik tabletlerde #priceBar VE dock sheet'in
+       "Ürün Özeti" düğmesini AYNI ANDA görünür kılıyordu (iki CTA birden).
+       display DIŞINDAKİ dokunma-hedefi boyutlandırması (min-height/hizalama)
+       .dockCta için de geçerliliğini korusun diye ayrıca tekrarlanıyor (flex
+       olmayan bir kutuda bu özellikler zararsızca yok sayılır). */
+    #priceBar .cta { min-height:48px; display:flex; align-items:center; justify-content:center; }
+    .dockCta { min-height:48px; align-items:center; justify-content:center; }
+    #catalogTrigger { min-height:44px; padding:10px 16px; }
+    #catalogPanel .cat { min-height:44px; display:flex; align-items:center; }
+    #catalogPanel .prod { min-height:48px; }
+    #summaryCard .acts .chip { min-height:44px; }
+  }
+
+  /* 860px'i AŞAN dokunmatik tabletler: hâlâ masaüstü iki-panelli yüzen
+     dock (yukarıdaki varsayılan kurallar, cihaz-analizi.md'deki karar --
+     tam mobil sheet'e GEÇMİYOR, o zaten 860px altının kendi bloğunda) --
+     ama fare hassasiyetiyle ayarlı boşluk artık parmak için biraz sıkı,
+     o yüzden sadece iç boşluğu/aralığı büyütüyoruz (dokunma-hedefi
+     boyutlandırması, salt dokunmatik cihazlara özgü). 860px ve altı zaten
+     kendi mobil sheet padding'ini kullanıyor, burada tekrar ezilmiyor. */
+  @media (hover: none) and (pointer: coarse) and (min-width: 861px) {
+    #dock, #dockOptions { padding:20px 24px; }
+    .row.opts { gap:16px; }
+  }
+
+  /* #dockWrap taşma düzeltmesi: DOKUNMA YETENEĞİNDEN BAĞIMSIZ, salt genişliğe
+     bağlı. İlk sürümü yalnızca (hover:none) and (pointer:coarse) bloğunun
+     içindeydi (büyüyen 44px dokunma hedefleriyle ölçülmüştü), ama fare ile
+     sürülen sıradan bir masaüstü penceresi de (split-screen, küçük laptop,
+     yarım ekran snap) AYNI taşmayı yaşıyor -- 900px genişlikte, çip satırı
+     tamamen açıkken (10 çip + "−") #dockWrap'in doğal içerik genişliği
+     ~1053px'e çıkıyor, body'nin overflow:hidden'ı bunu her iki kenardan
+     ~76.6px kırpıyor, ilk/son çip kaydırma olmadan erişilemez hale geliyordu.
+     min-width:861px eşiği 860px altının kendi tam-genişlik sheet düzenini
+     (width:100%, sabit left:0/right:0) hiç etkilemez. */
+  @media (min-width: 861px) {
+    #dockWrap { max-width: calc(100vw - 40px); }
+    #dock, #dockOptions { max-width:100%; }
+    #dockRows, .row.parts, .row.opts { min-width:0; max-width:100%; }
+    #dock .row.parts, #dockOptions .row.opts {
+      overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+              mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    }
+    #dock .row.parts::-webkit-scrollbar, #dockOptions .row.opts::-webkit-scrollbar { display:none; }
+  }
+
+  /* ==========================================================
+     Alternatif Radial Arc Arayüzü Stilleri
+     ========================================================== */
+  #sideDock {
+    position: fixed; left: 18px; bottom: 24px; top: auto; transform: none; z-index: 5;
+    display: flex; flex-direction: column; gap: 8px; padding: 10px;
+    background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--sheen), 0 8px 26px rgba(40,36,30,.11);
+    border-radius: 24px; transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    width: 68px; overflow: hidden; align-items: center;
+  }
+  #sideDock.expanded { width: 220px; align-items: stretch; }
+
+  .camera-trigger-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; border-radius: 16px; border: none;
+    background: rgba(255, 255, 255, 0.7); color: var(--ink);
+    cursor: pointer; transition: all 0.16s ease; margin: 0 auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06); flex-shrink: 0;
+  }
+  .camera-trigger-btn:hover { background: #ffffff; transform: scale(1.06); }
+  .camera-trigger-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+  .camera-presets-wrapper {
+    display: none; flex-direction: column; gap: 6px; margin-top: 6px; width: 100%;
+  }
+  #sideDock.expanded .camera-presets-wrapper { display: flex; }
+  .camera-header-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; }
+
+  .preset-angle-btn {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-radius: 12px; border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.4); color: var(--ink);
+    font-size: 11px; font-weight: 600; cursor: pointer; text-align: left;
+    transition: all 0.14s ease; font-family: inherit; width: 100%;
+  }
+  .preset-angle-btn:hover { background: rgba(255, 255, 255, 0.8); }
+  .preset-angle-btn.active {
+    background: var(--acc); color: var(--on-acc);
+    border-color: var(--acc); box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .preset-angle-btn .angle-icon { font-size: 13px; }
+
+  .capture-btn {
+    margin-top: 8px; width: 100%; padding: 10px 12px;
+    border-radius: 14px; border: none; background: #1a1a19; color: #ffffff;
+    font-size: 11px; font-weight: 700; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; gap: 6px;
+    transition: all 0.14s ease; font-family: inherit;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .capture-btn:hover { background: #333332; transform: translateY(-1px); }
+
+  /* Dock Slider & Smooth Sliding Collapse (Desktop & Mobile) */
+  .dockHandle {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; height: 26px; cursor: pointer; user-select: none;
+    margin-bottom: 4px; border-radius: 12px;
+    transition: background 0.16s ease;
+  }
+  .dockHandle:hover { background: rgba(255, 255, 255, 0.4); }
+  .dockHandle .handle-bar {
+    width: 38px; height: 4px; border-radius: 2px;
+    background: var(--muted); opacity: 0.65;
+    transition: all 0.2s ease;
+  }
+  .dockHandle:hover .handle-bar { opacity: 1; width: 46px; }
+  .dockHandle .handle-icon {
+    font-size: 10px; color: var(--muted); transition: transform 0.28s ease;
+  }
+
+  #dockWrap {
+    transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  }
+  #dockWrap[data-collapsed="true"], #dockWrap.is-collapsed {
+    transform: translateY(calc(100% - 32px)) !important;
+  }
+  #dockWrap[data-collapsed="true"] .dockHandle .handle-icon,
+  #dockWrap.is-collapsed .dockHandle .handle-icon {
+    transform: rotate(180deg);
+  }
+
+  .minimize-btn {
+    background: transparent; border: none; font-size: 12px; font-weight: 700;
+    color: var(--muted); cursor: pointer; width: 24px; height: 24px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all 0.12s ease; line-height: 1; font-family: inherit;
+  }
+  .minimize-btn:hover { background: rgba(0,0,0,0.08); color: var(--ink); }
+
+  #partsPanel.is-minimized .parts-panel-list { display: none !important; }
+  #partsPanel.is-minimized { height: auto !important; max-height: 34px !important; min-height: 34px !important; }
+
+  /* Mobil Ekran Uyum İyileştirmeleri */
+  @media (max-width: 860px) {
+    #catalogTrigger {
+      top: calc(12px + env(safe-area-inset-top)); left: 12px;
+    }
+    #historyDock {
+      top: calc(12px + env(safe-area-inset-top));
+      left: 50%; transform: translateX(-50%);
+    }
+    #topRightWrap {
+      top: calc(12px + env(safe-area-inset-top)); right: 12px;
+    }
+    #partsPanel {
+      top: calc(58px + env(safe-area-inset-top)); left: 12px;
+      width: calc(100vw - 24px); max-width: 240px; max-height: 200px;
+    }
+    #sideDock {
+      left: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); top: auto;
+      transform: none;
+    }
+    #radialArcMenu {
+      left: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); top: auto;
+      width: calc(100vw - 24px); max-width: 360px; border-radius: 20px;
+    }
+    #uiModeToggle {
+      right: 12px; bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+  }
+
+  /* Global Loading & Toast Overlay Styling */
+  #loading {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100;
+    padding: 8px 16px; background: rgba(26, 26, 25, 0.82); color: #ffffff;
+    font-size: 11px; font-weight: 600; border-radius: 999px; width: max-content; max-width: 240px; white-space: nowrap;
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2); pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  #loading[hidden], #loading.hidden { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+
+  #toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 90;
+    padding: 8px 16px; background: rgba(26, 26, 25, 0.88); color: #ffffff;
+    font-size: 11px; font-weight: 600; border-radius: 999px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.18); pointer-events: none;
+    opacity: 0; transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+
+  /* Drag grip & active drag styles */
+  .draggable-panel { touch-action: none; user-select: none; }
+  .draggable-panel.is-dragging {
+    box-shadow: 0 24px 60px rgba(0,0,0,0.22) !important;
+    opacity: 0.96;
+  }
+  .drag-grip {
+    text-align: center; font-size: 10px; color: var(--faint); letter-spacing: 2px;
+    margin-bottom: 4px; cursor: grab; opacity: 0.6; transition: opacity 0.14s ease;
+  }
+  .drag-grip:hover { opacity: 1; }
+  .drag-grip-small {
+    font-size: 10px; color: var(--faint); letter-spacing: 2px;
+    cursor: grab; opacity: 0.6; margin-left: auto;
+  }
+  /* Resize handle styling */
+  .resize-handle {
+    position: absolute; right: 4px; bottom: 4px; width: 16px; height: 16px;
+    font-size: 10px; color: var(--faint); cursor: nwse-resize; user-select: none;
+    display: grid; place-items: center; opacity: 0.5; transition: opacity 0.14s ease, transform 0.14s ease;
+    z-index: 10;
+  }
+  .resize-handle:hover { opacity: 1; transform: scale(1.25); color: var(--ink); }
+  .is-resizing { box-shadow: 0 24px 60px rgba(0,0,0,0.25) !important; }
+  .drag-handle { cursor: grab; display: flex; align-items: center; justify-content: space-between; }
+
+  #partsPanel {
+    position: fixed; left: 18px; top: 70px; z-index: 5;
+    width: 210px; max-height: calc(100vh - 120px); display: flex; flex-direction: column;
+    padding: 14px; background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--sheen), 0 12px 32px rgba(40,36,30,.12);
+    border-radius: var(--r-panel); overflow: hidden;
+  }
+  .parts-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--hair); cursor: grab; }
+  .parts-panel-list {
+    display: flex; flex-direction: column; gap: 4px; overflow-y: auto; padding-right: 4px;
+    scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent;
+  }
+  .parts-panel-list::-webkit-scrollbar { width: 4px; }
+  .parts-panel-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+  .part-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-radius: 12px; border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.35); cursor: pointer; font-size: 11px; font-weight: 600;
+    color: var(--ink); transition: all .14s ease; font-family: inherit;
+  }
+  .part-item:hover { background: rgba(255, 255, 255, 0.65); }
+  .part-item.active {
+    background: #ffffff; border-color: rgba(0,0,0,0.12);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .part-item .part-dot {
+    width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.18);
+    box-shadow: inset 0 -2px 4px rgba(0,0,0,0.25); flex-shrink: 0;
+  }
+
+  /* Radial Arc Contextual Menu */
+  #radialArcMenu {
+    position: fixed; z-index: 6; pointer-events: auto;
+    display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 16px 18px;
+    background: rgba(255, 255, 255, 0.52);
+    -webkit-backdrop-filter: blur(28px) saturate(1.8); backdrop-filter: blur(28px) saturate(1.8);
+    border: 1.5px solid rgba(255, 255, 255, 0.75);
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.85), 0 20px 50px rgba(30, 25, 20, 0.16);
+    border-radius: 28px 150px 150px 28px / 28px 100px 100px 28px;
+    transition: opacity .18s ease, transform .12s cubic-bezier(0.16, 1, 0.3, 1);
+    min-width: 270px;
+  }
+  #radialArcMenu.hidden { opacity: 0; pointer-events: none; transform: scale(0.94); }
+  .arc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+  .arc-part-title { font-size: 11px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
+  .arc-body { display: flex; flex-direction: column; gap: 8px; }
+  .arc-row { display: flex; align-items: center; gap: 10px; }
+  .arc-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); min-width: 34px; flex-shrink: 0; }
+  .arc-chips, .arc-swatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .arc-chip {
+    font-size: 10px; font-weight: 600; padding: 4px 11px; border-radius: 999px;
+    background: rgba(255,255,255,0.65); border: 1px solid rgba(0,0,0,0.1);
+    color: var(--ink); cursor: pointer; font-family: inherit; transition: all .12s ease;
+  }
+  .arc-chip:hover { background: #ffffff; border-color: rgba(0,0,0,0.25); }
+  .arc-chip.active { background: var(--acc); border-color: var(--acc); color: var(--on-acc); box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .arc-swatch {
+    width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2);
+    box-shadow: inset 0 -3px 5px rgba(0,0,0,0.25); cursor: pointer; transition: transform .12s ease, outline .12s ease;
+  }
+  .arc-swatch:hover { transform: scale(1.15); }
+  .arc-swatch.active { outline: 2.5px solid var(--acc); outline-offset: 2px; transform: scale(1.08); }
+
+  #uiModeToggle {
+    position: fixed; right: 15px; bottom: 18px; z-index: 5;
+    display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+    font-size: 10.5px; font-weight: 600; color: var(--ink); cursor: pointer;
+    border-radius: 999px; transition: all .16s ease; font-family: inherit;
+  }
+  #uiModeToggle:hover { background: rgba(255,255,255,0.85); transform: translateY(-1px); }
+  #uiModeToggle .mode-icon { color: #8a5a38; font-size: 12px; }
+
+
+
+
+</style>
+
+</head>
+<body>
+  <div id="backdrop">
+    <div class="base"></div><div class="orb a"></div><div class="orb b"></div>
+    <div class="pool"></div><div class="grain"></div>
+  </div>
+
+  <div id="canvasWrap"></div>
+  <div id="hotspotLayer"></div>
+
+  <button id="catalogTrigger" type="button" class="glass">
+    <img class="logo" src="./assets/icons/wordmark-mark.png" alt="Grande" />
+    <span class="label">Ürünler</span><span class="caret">▾</span>
+  </button>
+
+
+
+  <div id="topRightWrap">
+    <div id="langSwitch" class="float glass"></div>
+    <div id="priceBar" class="float glass"></div>
+  </div>
+  <div id="dockWrap">
+    <div id="dock" class="float glass panel">
+      <div id="dockHandle" class="dockHandle" title="Daralt / Genişlet">
+        <span class="handle-bar"></span>
+        <span class="handle-icon">▼</span>
+      </div>
+      <div id="dockRows"></div>
+    </div>
+    <div id="dockOptions" class="float glass panel"></div>
+    <button id="dockCta" class="cta dockCta" type="button">Ürün Özeti</button>
+  </div>
+
+  <div id="catalogPanel" class="glass panel"></div>
+
+  <div id="summaryCard" class="glass panel"></div>
+  <div id="utilityButtons"></div>
+
+  <div id="toast"></div>
+  <div id="loading">Yükleniyor…</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
