@@ -381,15 +381,37 @@ export function initAlternativeUI(app) {
       `;
     });
 
+    const isMin = partsPanel.classList.contains('is-minimized');
     partsPanel.innerHTML = `
       <div class="parts-panel-header drag-handle">
         <span class="lbl">${t('ui.parts', lang, 'Parçalar')}</span>
-        <span class="drag-grip-small">⋮⋮</span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button type="button" class="minimize-btn" id="minimizePartsBtn" title="Küçült / Büyüt">${isMin ? '+' : '—'}</button>
+          <span class="drag-grip-small">⋮⋮</span>
+        </div>
       </div>
       <div class="parts-panel-list">${itemsHtml}</div>
     `;
 
-    makeResizable(partsPanel, { minWidth: 180, minHeight: 140 });
+    makeResizable(partsPanel, { minWidth: 140, minHeight: 80 });
+
+    const minBtn = partsPanel.querySelector('#minimizePartsBtn');
+    const headerEl = partsPanel.querySelector('.parts-panel-header');
+
+    const toggleMinimize = (e) => {
+      if (e) e.stopPropagation();
+      partsPanel.classList.toggle('is-minimized');
+      const nowMin = partsPanel.classList.contains('is-minimized');
+      if (minBtn) minBtn.textContent = nowMin ? '+' : '—';
+    };
+
+    if (minBtn) minBtn.addEventListener('click', toggleMinimize);
+    if (headerEl) {
+      headerEl.addEventListener('click', (e) => {
+        if (e.target.closest('#minimizePartsBtn') || e.target.closest('.drag-grip-small')) return;
+        toggleMinimize(e);
+      });
+    }
 
     partsPanel.querySelectorAll('.part-item').forEach(el => {
       el.addEventListener('click', () => {

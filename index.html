@@ -757,11 +757,113 @@
     font-size: 10.5px; font-weight: 600; color: var(--ink); cursor: pointer;
     border-radius: 999px; transition: all .16s ease; font-family: inherit;
   }
-  #uiModeToggle:hover { background: rgba(255,255,255,0.85); transform: translateY(-1px); }
-  #uiModeToggle .mode-icon { color: #8a5a38; font-size: 12px; }
+  /* History Dock (Undo / Redo / Center) */
+  #historyDock {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 25;
+    display: flex; align-items: center; gap: 2px; padding: 4px 8px;
+    background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--sheen), 0 8px 24px rgba(40,36,30,.1);
+    border-radius: 20px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .history-btn {
+    display: flex; align-items: center; gap: 5px; padding: 6px 12px;
+    border-radius: 14px; border: none; background: transparent;
+    color: var(--ink); font-size: 11px; font-weight: 600; cursor: pointer;
+    transition: all 0.14s ease; font-family: inherit;
+  }
+  .history-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.75); transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .history-btn:disabled {
+    opacity: 0.38; cursor: not-allowed;
+  }
+  .history-btn svg { flex-shrink: 0; }
+  .history-btn.center-btn {
+    background: rgba(255, 255, 255, 0.45);
+  }
+  .history-btn.center-btn:hover {
+    background: #ffffff; color: var(--ink); box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+  }
+  .history-divider {
+    width: 1px; height: 16px; background: var(--hair); margin: 0 2px;
+  }
 
+  .minimize-btn {
+    background: transparent; border: none; font-size: 12px; font-weight: 700;
+    color: var(--muted); cursor: pointer; width: 24px; height: 24px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all 0.12s ease; line-height: 1; font-family: inherit;
+  }
+  .minimize-btn:hover { background: rgba(0,0,0,0.08); color: var(--ink); }
 
+  #partsPanel.is-minimized .parts-panel-list { display: none !important; }
+  #partsPanel.is-minimized { height: auto !important; max-height: 34px !important; min-height: 34px !important; }
 
+  /* Mobil Ekranlar İçin Tutarlı Buton & Yerleşim Optimizasyonları */
+  @media (max-width: 860px) {
+    #uiModeToggle { display: none !important; }
+    #dockWrap { display: none !important; }
+
+    #catalogTrigger {
+      top: calc(8px + env(safe-area-inset-top)); left: 8px;
+      padding: 4px 10px; height: 34px; font-size: 10.5px; border-radius: 14px; z-index: 35;
+    }
+    #historyDock {
+      top: calc(8px + env(safe-area-inset-top));
+      left: 50%; transform: translateX(-50%);
+      padding: 2px 4px; z-index: 35; gap: 2px; height: 34px; border-radius: 14px;
+    }
+    .history-btn { width: 28px; height: 28px; padding: 0; justify-content: center; border-radius: 10px; }
+    .history-btn span { display: none; }
+
+    #topRightWrap {
+      top: calc(8px + env(safe-area-inset-top)); right: 8px; z-index: 35;
+    }
+    #langSwitch, #priceBar { padding: 4px 8px; height: 34px; font-size: 10.5px; border-radius: 14px; }
+
+    #partsPanel {
+      top: calc(48px + env(safe-area-inset-top)); left: 8px;
+      width: 145px; max-height: 125px; padding: 6px 8px; font-size: 9.5px;
+      border-radius: 14px; z-index: 20;
+    }
+    #partsPanel.is-minimized {
+      width: auto !important; max-width: 105px !important;
+      padding: 4px 8px !important; border-radius: 12px !important;
+    }
+    #partsPanel .part-item { padding: 4px 6px; font-size: 9.5px; border-radius: 8px; min-height: 28px; }
+    #partsPanel .part-dot { width: 10px; height: 10px; }
+
+    #sideDock {
+      left: 8px; bottom: calc(10px + env(safe-area-inset-bottom)); top: auto;
+      transform: none; width: 40px; height: 40px; border-radius: 14px;
+      padding: 0; display: flex; align-items: center; justify-content: center; z-index: 30;
+      overflow: hidden;
+    }
+    #sideDock .drag-grip { display: none; }
+    #sideDock .camera-trigger-btn { width: 34px; height: 34px; border-radius: 10px; }
+    #sideDock.expanded {
+      width: calc(100vw - 16px); max-width: 260px; height: auto;
+    }
+
+    #radialArcMenu {
+      left: 52px !important; right: 8px !important;
+      bottom: calc(10px + env(safe-area-inset-bottom)) !important; top: auto !important;
+      width: auto !important; max-width: none !important; transform: none !important;
+      border-radius: 18px !important; padding: 8px 12px !important;
+      background: rgba(255, 255, 255, 0.95) !important;
+      -webkit-backdrop-filter: blur(24px) !important; backdrop-filter: blur(24px) !important;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18) !important;
+      z-index: 25;
+    }
+
+    .arc-chip {
+      padding: 6px 12px !important; font-size: 10.5px !important; height: 30px !important;
+    }
+    .arc-swatch {
+      width: 24px !important; height: 24px !important;
+    }
+  }
 
 </style>
 
@@ -779,6 +881,40 @@
     <img class="logo" src="./assets/icons/wordmark-mark.png" alt="Grande" />
     <span class="label">Ürünler</span><span class="caret">▾</span>
   </button>
+
+  <div id="historyDock" class="glass">
+    <button type="button" id="undoBtn" class="history-btn" title="Geri Al (Ctrl + Z)" disabled>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1 4 1 10 7 10"/>
+        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+      </svg>
+      <span>Geri</span>
+    </button>
+
+    <div class="history-divider"></div>
+
+    <button type="button" id="centerBtn" class="history-btn center-btn" title="Ürünü Ortala (Z)">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="2" x2="12" y2="5"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="5" y2="12"/>
+        <line x1="19" y1="12" x2="22" y2="12"/>
+      </svg>
+      <span>Ortala</span>
+    </button>
+
+    <div class="history-divider"></div>
+
+    <button type="button" id="redoBtn" class="history-btn" title="İleri Al (Ctrl + Y)" disabled>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
+      </svg>
+      <span>İleri</span>
+    </button>
+  </div>
 
 
 
